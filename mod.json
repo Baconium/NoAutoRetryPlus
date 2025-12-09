@@ -1,39 +1,46 @@
 {
-  "geode": "4.10.0",
-  "gd": {
-    "win": "2.2074",
-    "android": "2.2074",
-    "mac": "2.2074",
-    "ios": "2.2074"
-  },
-  "id": "baconmania.noautoretryplus",
-  "name": "No Auto Retry+",
-  "version": "v1.0.0",
-  "developer": "BaconMania",
-  "description": "Bugfixes and enhancements for disabling the 'Auto Retry' option",
-  "settings": {
-    "title-main": {
-      "type": "title",
-      "name": "Settings"
+    "geode": "4.10.0",
+    "gd": {
+        "win": "2.2074",
+        "android": "2.2074",
+        "mac": "2.2074",
+        "ios": "2.2074"
     },
-    "practice-death-screen": {
-      "type": "bool",
-      "name": "Practice death screen",
-      "description": "Show the death screen in practice mode, just like normal mode",
-      "default": true
-    },
-    "force-practice-cursor": {
-      "type": "bool",
-      "name": "Visible cursor on death",
-      "description": "Makes the cursor visible when you die in practice mode, only does anything if practice death screen is enabled",
-      "default": true
-    },
-    "up-arrow-retry": {
-      "type": "bool",
-      "name": "Up arrow restart",
-      "description": "Up arrow retries the level just like the spacebar does",
-      "default": true
+    "id": "baconmania.noautoretryplus",
+    "name": "No Auto Retry+",
+    "version": "v1.0.0",
+    "developer": "BaconMania",
+    "description": "Bugfixes and enhancements for disabling the 'Auto Retry' option",
+    "repository": "https://github.com/Baconium/NoAutoRetryPlus",
+    "icon": "narp.png",
+    "tags": [
+        "utility",
+        "bugfix",
+        "enhancement",
+        "gameplay"
+    ],
+    "settings": {
+        "title-main": {
+            "type": "title",
+            "name": "Settings"
+        },
+        "practice-death-screen": {
+            "type": "bool",
+            "name": "Practice death screen",
+            "description": "Show the death screen in practice mode, just like normal mode",
+            "default": true
+        },
+        "force-practice-cursor": {
+            "type": "bool",
+            "name": "Visible cursor on death",
+            "description": "Makes the cursor visible when you die in practice mode, only does anything if practice death screen is enabled",
+            "default": true
+        },
+        "up-arrow-retry": {
+            "type": "bool",
+            "name": "Up arrow restart",
+            "description": "Up arrow retries the level just like the spacebar does",
+            "default": true
+        }
     }
-  }
 }
-
