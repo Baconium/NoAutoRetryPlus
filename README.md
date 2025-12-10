@@ -10,5 +10,4 @@ These are all toggleable in game if you don't like a specific feature. Personall
 
 Installation:
 
-download the .geode mod from the latest release, then put it in your mods folder. not sure if the mod works on mobile, it *probably* works on macos.
-(note, the mod is not currently on the geode index, I'm gonna submit it for review after writing this readme)
+the mod is on the geode index! you can download it in game through the mod browser. if you would like to install it manually, just download the mod from the latest release and put it in your mods folder.
