@@ -5,7 +5,6 @@
 #include <Geode/modify/LevelInfoLayer.hpp>
 #include <Geode/modify/LevelSelectLayer.hpp>
 #include <Geode/modify/FLAlertLayer.hpp>
-#include <Geode/modify/MenuLayer.hpp>
 #include <Geode/cocos/CCDirector.h>
 
 using namespace geode::prelude;
@@ -13,7 +12,7 @@ using namespace geode::prelude;
 class $modify(NoAutoRetryPlusPlayLayer, PlayLayer) {
 public:
     struct Fields {
-        bool deathScreenScheduledOrShown = false;
+        bool deathScreenShown = false;
     };
 
 private:
@@ -31,37 +30,34 @@ private:
         return mod->getSettingValue<bool>("force-practice-cursor");
     }
 
-    void clearDeathScreenState() {
-        this->unschedule(schedule_selector(NoAutoRetryPlusPlayLayer::onPracticeDeathDelay));
-        m_fields->deathScreenScheduledOrShown = false;
-    }
-
-    bool hasRetryLayerChild() {
-        auto children = this->getChildren();
-        if (!children) return false;
-
-        CCObject* obj = nullptr;
-        CCARRAY_FOREACH(children, obj) {
-            auto node = static_cast<cocos2d::CCNode*>(obj);
-            if (!node) continue;
-
-            if (typeinfo_cast<RetryLevelLayer*>(node)) {
-                return true;
-            }
-        }
-        return false;
+    bool isDeathScreenBugFixEnabled() const {
+        auto mod = Mod::get();
+        if (!mod) return true;
+        if (!mod->hasSetting("fix-death-screen-bug")) return true;
+        return mod->getSettingValue<bool>("fix-death-screen-bug");
     }
 
 public:
-    bool createRetryLayerOnce() {
-        if (!m_isPracticeMode) return false;
+    // Shared logic to actually spawn the layer
+    void createRetryLayer() {
+        // If the fix is ENABLED, we strictly enforce the flag.
+        // If DISABLED, we bypass this check to allow multiple screens (the bug).
+        if (isDeathScreenBugFixEnabled()) {
+            if (!m_fields->deathScreenShown) return;
+        }
 
+        // Standard safety checks (must always apply)
+        if (!m_isPracticeMode) return;
         if (!m_player1 || !m_player1->m_isDead) {
-            return false;
+            m_fields->deathScreenShown = false;
+            return;
         }
 
         auto layer = RetryLevelLayer::create();
-        if (!layer) return false;
+        if (!layer) {
+            m_fields->deathScreenShown = false;
+            return;
+        }
 
         this->addChild(layer, 100);
         layer->enterLayer();
@@ -75,47 +71,51 @@ public:
                 }
             }
         }
-
-        return true;
     }
 
+    // Called by scheduleOnce (Clean behavior)
     void onPracticeDeathDelay(float dt) {
         if (!isPracticeDeathScreenEnabled()) {
-            clearDeathScreenState();
+            m_fields->deathScreenShown = false;
             return;
         }
+        createRetryLayer();
+    }
 
-        if (!m_fields->deathScreenScheduledOrShown) {
+    // Called by runAction (Buggy behavior)
+    void onPracticeDeathDelayCallFunc() {
+        if (!isPracticeDeathScreenEnabled()) {
+            m_fields->deathScreenShown = false;
             return;
         }
-
-        if (!createRetryLayerOnce()) {
-            this->scheduleOnce(
-                schedule_selector(NoAutoRetryPlusPlayLayer::onPracticeDeathDelay),
-                0.05f
-            );
-            return;
-        }
-
+        createRetryLayer();
     }
 
     void resetLevel() {
-        clearDeathScreenState();
+        this->unschedule(schedule_selector(NoAutoRetryPlusPlayLayer::onPracticeDeathDelay));
+        this->stopActionByTag(0xDEAD); // Stop the buggy action if it exists
+        m_fields->deathScreenShown = false;
         PlayLayer::resetLevel();
     }
 
     void resetLevelFromStart() {
-        clearDeathScreenState();
+        this->unschedule(schedule_selector(NoAutoRetryPlusPlayLayer::onPracticeDeathDelay));
+        this->stopActionByTag(0xDEAD);
+        m_fields->deathScreenShown = false;
         PlayLayer::resetLevelFromStart();
     }
 
     void onQuit() {
-        clearDeathScreenState();
+        this->unschedule(schedule_selector(NoAutoRetryPlusPlayLayer::onPracticeDeathDelay));
+        this->stopActionByTag(0xDEAD);
+        m_fields->deathScreenShown = false;
         PlayLayer::onQuit();
     }
 
     void togglePracticeMode(bool on) {
-        clearDeathScreenState();
+        this->unschedule(schedule_selector(NoAutoRetryPlusPlayLayer::onPracticeDeathDelay));
+        this->stopActionByTag(0xDEAD);
+        m_fields->deathScreenShown = false;
         PlayLayer::togglePracticeMode(on);
     }
 
@@ -125,28 +125,38 @@ public:
         }
 
         if (!m_isPracticeMode || !isPracticeDeathScreenEnabled()) {
-            if (hasRetryLayerChild()) {
-                return;
-            }
             PlayLayer::showRetryLayer();
             return;
         }
 
-        if (m_fields->deathScreenScheduledOrShown) {
-            return;
+        // Fix Enabled: Use checks and scheduleOnce (Safe)
+        if (isDeathScreenBugFixEnabled()) {
+            if (m_fields->deathScreenShown) {
+                return;
+            }
+            m_fields->deathScreenShown = true;
+            
+            this->scheduleOnce(
+                schedule_selector(NoAutoRetryPlusPlayLayer::onPracticeDeathDelay),
+                0.4f
+            );
         }
-        m_fields->deathScreenScheduledOrShown = true;
-
-        this->scheduleOnce(
-            schedule_selector(NoAutoRetryPlusPlayLayer::onPracticeDeathDelay),
-            0.4f
-        );
+        // Fix Disabled: Use CCAction (Unsafe/Stackable)
+        else {
+            m_fields->deathScreenShown = true; // Still needed to block delayedResetLevel
+            
+            auto delay = CCDelayTime::create(0.4f);
+            auto call = CCCallFunc::create(this, callfunc_selector(NoAutoRetryPlusPlayLayer::onPracticeDeathDelayCallFunc));
+            auto sequence = CCSequence::create(delay, call, nullptr);
+            sequence->setTag(0xDEAD); // Tag it so we can try to cancel it on reset
+            this->runAction(sequence);
+        }
     }
 
     void delayedResetLevel() {
         if (m_isPracticeMode &&
             isPracticeDeathScreenEnabled() &&
-            (m_fields->deathScreenScheduledOrShown || hasRetryLayerChild())) {
+            m_fields->deathScreenShown) {
             return;
         }
         PlayLayer::delayedResetLevel();
@@ -155,13 +165,17 @@ public:
     void destroyPlayer(PlayerObject* player, GameObject* object) {
         PlayLayer::destroyPlayer(player, object);
 
-        if (m_isPracticeMode && isPracticeDeathScreenEnabled()) {
-            this->showRetryLayer();
+        if (m_isPracticeMode &&
+            isPracticeDeathScreenEnabled()) {
+
+            if (!isDeathScreenBugFixEnabled() || !m_fields->deathScreenShown) {
+                this->showRetryLayer();
+            }
         }
     }
 };
 
-// up arrow spacebar functionality helper
+// --- Helper for Up Arrow Remapping ---
 
 bool shouldMapUpArrow(cocos2d::enumKeyCodes key) {
     if (key != cocos2d::enumKeyCodes::KEY_Up) return false;
@@ -172,7 +186,7 @@ bool shouldMapUpArrow(cocos2d::enumKeyCodes key) {
     return mod->getSettingValue<bool>("up-arrow-retry");
 }
 
-// up arrow spacebar functionality input hooks (thank you devtools mod)
+// --- Input Hooks ---
 
 class $modify(NoAutoRetryPlusRetryLevelLayer, RetryLevelLayer) {
 public:
@@ -221,15 +235,5 @@ public:
             key = cocos2d::enumKeyCodes::KEY_Space;
         }
         FLAlertLayer::keyDown(key);
-    }
-};
-
-class $modify(NoAutoRetryMenuLayer, MenuLayer) {
-public:
-    void keyDown(cocos2d::enumKeyCodes key) override {
-        if (shouldMapUpArrow(key)) {
-            key = cocos2d::enumKeyCodes::KEY_Space;
-        }
-        MenuLayer::keyDown(key);
     }
 };
