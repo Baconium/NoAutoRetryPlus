@@ -6,6 +6,7 @@
 #include <Geode/modify/LevelSelectLayer.hpp>
 #include <Geode/modify/FLAlertLayer.hpp>
 #include <Geode/modify/MenuLayer.hpp>
+#include <Geode/modify/PauseLayer.hpp>
 #include <Geode/cocos/CCDirector.h>
 
 using namespace geode::prelude;
@@ -172,15 +173,82 @@ bool shouldMapUpArrow(cocos2d::enumKeyCodes key) {
     return mod->getSettingValue<bool>("up-arrow-retry");
 }
 
-// up arrow spacebar functionality input hooks (thank you devtools mod)
+bool shouldRetryOnAnyClick() {
+    auto mod = Mod::get();
+    if (!mod || !mod->hasSetting("click-anywhere-retry")) return false;
+
+    return mod->getSettingValue<bool>("click-anywhere-retry");
+}
+
+class ClickAnywhereRetryProxy : public cocos2d::CCLayer {
+public:
+    RetryLevelLayer* m_owner = nullptr;
+
+    static ClickAnywhereRetryProxy* create(RetryLevelLayer* owner) {
+        auto ret = new ClickAnywhereRetryProxy();
+        if (ret && ret->init(owner)) {
+            ret->autorelease();
+            return ret;
+        }
+        delete ret;
+        return nullptr;
+    }
+
+    bool init(RetryLevelLayer* owner) {
+        if (!CCLayer::init()) return false;
+        m_owner = owner;
+        this->setTouchEnabled(true);
+        return true;
+    }
+
+    void registerWithTouchDispatcher() override {
+        if (auto director = cocos2d::CCDirector::sharedDirector()) {
+            if (auto dispatcher = director->getTouchDispatcher()) {
+                dispatcher->addTargetedDelegate(this, -2000, true);
+            }
+        }
+    }
+
+    bool ccTouchBegan(cocos2d::CCTouch* touch, cocos2d::CCEvent* event) override {
+        if (!m_owner || !shouldRetryOnAnyClick()) {
+            return false;
+        }
+
+        m_owner->onReplay(nullptr);
+        return true;
+    }
+};
+
+// up arrow spacebar functionality input hooks
 
 class $modify(NoAutoRetryPlusRetryLevelLayer, RetryLevelLayer) {
 public:
+    void customSetup() override {
+        RetryLevelLayer::customSetup();
+
+        if (shouldRetryOnAnyClick()) {
+            if (auto proxy = ClickAnywhereRetryProxy::create(this)) {
+                this->addChild(proxy, 9999);
+            }
+        }
+    }
+
+
+
     void keyDown(cocos2d::enumKeyCodes key) override {
         if (shouldMapUpArrow(key)) {
             key = cocos2d::enumKeyCodes::KEY_Space;
         }
         RetryLevelLayer::keyDown(key);
+    }
+
+    bool ccTouchBegan(cocos2d::CCTouch* touch, cocos2d::CCEvent* event) override {
+        if (shouldRetryOnAnyClick()) {
+            this->onReplay(nullptr);
+            return true;
+        }
+
+        return RetryLevelLayer::ccTouchBegan(touch, event);
     }
 };
 
@@ -224,12 +292,22 @@ public:
     }
 };
 
-class $modify(NoAutoRetryMenuLayer, MenuLayer) {
+class $modify(NoAutoRetryPlusMenuLayer, MenuLayer) {
 public:
     void keyDown(cocos2d::enumKeyCodes key) override {
         if (shouldMapUpArrow(key)) {
             key = cocos2d::enumKeyCodes::KEY_Space;
         }
         MenuLayer::keyDown(key);
+    }
+};
+
+class $modify(NoAutoRetryPlusPauseLayer, PauseLayer) {
+public:
+    void keyDown(cocos2d::enumKeyCodes key) override {
+        if (shouldMapUpArrow(key)) {
+            key = cocos2d::enumKeyCodes::KEY_Space;
+        }
+        PauseLayer::keyDown(key);
     }
 };

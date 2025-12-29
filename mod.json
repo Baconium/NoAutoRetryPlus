@@ -8,12 +8,10 @@
     },
     "id": "baconmania.noautoretryplus",
     "name": "No Auto Retry+",
-    "version": "v1.0.3",
+    "version": "v1.0.4",
     "developer": "BaconMania",
     "description": "Bugfixes and enhancements for disabling the 'Auto Retry' option",
-    "changelog": "changelog.md",
     "repository": "https://github.com/Baconium/NoAutoRetryPlus",
-    "icon": "narp.png",
     "tags": [
         "utility",
         "bugfix",
@@ -31,6 +29,12 @@
             "type": "bool",
             "name": "Visible cursor on death in practice mode",
             "description": "Makes the cursor visible when you die in practice mode, only does anything if practice death screen is enabled",
+            "default": true
+        },
+        "click-anywhere-retry": {
+            "type": "bool",
+            "name": "Click anywhere to retry",
+            "description": "Retries the current level by clicking/tapping anywhere on the death screen rather than just the retry button",
             "default": true
         },
         "up-arrow-retry": {
