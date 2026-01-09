@@ -37,6 +37,12 @@
             "description": "Retries the current level by clicking/tapping anywhere on the death screen rather than just the retry button",
             "default": true
         },
+        "instant-retry": {
+            "type": "bool",
+            "name": "Instant retry",
+            "description": "Retry the current level on mouse down rather than mouse up, useful for levels that require you to jump on the first frame. (ex. low death.)",
+            "default": false
+        },
         "up-arrow-retry": {
             "type": "bool",
             "name": "Up arrow retry",

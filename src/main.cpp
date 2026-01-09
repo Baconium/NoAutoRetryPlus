@@ -7,6 +7,7 @@
 #include <Geode/modify/FLAlertLayer.hpp>
 #include <Geode/modify/MenuLayer.hpp>
 #include <Geode/modify/PauseLayer.hpp>
+#include <Geode/modify/EndLevelLayer.hpp>
 #include <Geode/cocos/CCDirector.h>
 
 using namespace geode::prelude;
@@ -180,6 +181,13 @@ bool shouldRetryOnAnyClick() {
     return mod->getSettingValue<bool>("click-anywhere-retry");
 }
 
+bool isInstantRetryEnabled() {
+    auto mod = Mod::get();
+    if (!mod || !mod->hasSetting("instant-retry")) return false;
+
+    return mod->getSettingValue<bool>("instant-retry");
+}
+
 class ClickAnywhereRetryProxy : public cocos2d::CCLayer {
 public:
     RetryLevelLayer* m_owner = nullptr;
@@ -209,31 +217,165 @@ public:
         }
     }
 
+    bool isTouchOverMenuButton(cocos2d::CCTouch* touch) {
+        if (!m_owner) return false;
+        
+        auto menu = m_owner->m_mainMenu;
+        if (!menu) return false;
+
+        auto touchPos = touch->getLocation();
+        
+        cocos2d::CCRect menuBtnBox;
+        bool found = false;
+
+        float maxCenterX = -FLT_MAX;
+        CCObject* obj = nullptr;
+        CCARRAY_FOREACH(menu->getChildren(), obj) {
+            auto node = static_cast<cocos2d::CCNode*>(obj);
+            if (!node || !node->isVisible()) continue;
+
+            auto box = node->boundingBox();
+            auto menuPos = menu->getPosition();
+            box.origin.x += menuPos.x;
+            box.origin.y += menuPos.y;
+
+            float centerX = box.getMidX();
+            if (centerX > maxCenterX) {
+                maxCenterX = centerX;
+                menuBtnBox = box;
+                found = true;
+            }
+        }
+
+        if (found && menuBtnBox.containsPoint(touchPos)) {
+            return true;
+        }
+        
+        return false;
+    }
+
     bool ccTouchBegan(cocos2d::CCTouch* touch, cocos2d::CCEvent* event) override {
         if (!m_owner || !shouldRetryOnAnyClick()) {
             return false;
         }
 
-        m_owner->onReplay(nullptr);
+        if (isTouchOverMenuButton(touch)) {
+            return false;
+        }
+
+        if (isInstantRetryEnabled()) {
+            m_owner->onReplay(nullptr);
+        }
+
         return true;
+    }
+
+    void ccTouchEnded(cocos2d::CCTouch* touch, cocos2d::CCEvent* event) override {
+        if (m_owner && shouldRetryOnAnyClick() && !isInstantRetryEnabled() && !isTouchOverMenuButton(touch)) {
+            m_owner->onReplay(nullptr);
+        }
     }
 };
 
-// up arrow spacebar functionality input hooks
-
-class $modify(NoAutoRetryPlusRetryLevelLayer, RetryLevelLayer) {
+class InstantRetryButtonProxy : public cocos2d::CCLayer {
 public:
-    void customSetup() override {
-        RetryLevelLayer::customSetup();
+    RetryLevelLayer* m_owner = nullptr;
 
-        if (shouldRetryOnAnyClick()) {
-            if (auto proxy = ClickAnywhereRetryProxy::create(this)) {
-                this->addChild(proxy, 9999);
+    static InstantRetryButtonProxy* create(RetryLevelLayer* owner) {
+        auto ret = new InstantRetryButtonProxy();
+        if (ret && ret->init(owner)) {
+            ret->autorelease();
+            return ret;
+        }
+        delete ret;
+        return nullptr;
+    }
+
+    bool init(RetryLevelLayer* owner) {
+        if (!CCLayer::init()) return false;
+        m_owner = owner;
+        this->setTouchEnabled(true);
+        return true;
+    }
+
+    void registerWithTouchDispatcher() override {
+        if (auto director = cocos2d::CCDirector::sharedDirector()) {
+            if (auto dispatcher = director->getTouchDispatcher()) {
+                dispatcher->addTargetedDelegate(this, -2000, true);
             }
         }
     }
 
+    bool isTouchOverRetryButton(cocos2d::CCTouch* touch) {
+        if (!m_owner || !m_owner->m_mainMenu) return false;
 
+        auto touchPos = touch->getLocation();
+        auto menu = m_owner->m_mainMenu;
+
+        cocos2d::CCRect retryBtnBox;
+        bool found = false;
+
+        float minCenterX = FLT_MAX;
+        CCObject* obj = nullptr;
+        CCARRAY_FOREACH(menu->getChildren(), obj) {
+            auto node = static_cast<cocos2d::CCNode*>(obj);
+            if (!node || !node->isVisible()) continue;
+
+            auto box = node->boundingBox();
+            auto menuPos = menu->getPosition();
+            box.origin.x += menuPos.x;
+            box.origin.y += menuPos.y;
+
+            float centerX = box.getMidX();
+            if (centerX < minCenterX) {
+                minCenterX = centerX;
+                retryBtnBox = box;
+                found = true;
+            }
+        }
+
+        if (found && retryBtnBox.containsPoint(touchPos)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    bool ccTouchBegan(cocos2d::CCTouch* touch, cocos2d::CCEvent* event) override {
+        if (!m_owner || !isInstantRetryEnabled()) {
+            return false;
+        }
+
+        if (isTouchOverRetryButton(touch)) {
+            m_owner->onReplay(nullptr);
+            return true;
+        }
+
+        return false;
+    }
+};
+
+// up arrow spacebar functionality and click anywhere/instant retry shizzle
+
+class $modify(NoAutoRetryPlusRetryLevelLayer, RetryLevelLayer) {
+public:
+
+    void customSetup() override {
+        RetryLevelLayer::customSetup();
+
+        bool clickAnywhereOn = shouldRetryOnAnyClick();
+        bool instantRetryOn = isInstantRetryEnabled();
+
+        if (clickAnywhereOn) {
+            if (auto proxy = ClickAnywhereRetryProxy::create(this)) {
+                this->addChild(proxy, 9999);
+            }
+        } else if (instantRetryOn) {
+            if (auto proxy = InstantRetryButtonProxy::create(this)) {
+                this->addChild(proxy, 9999);
+            }
+        }
+    }
 
     void keyDown(cocos2d::enumKeyCodes key) override {
         if (shouldMapUpArrow(key)) {
@@ -243,12 +385,11 @@ public:
     }
 
     bool ccTouchBegan(cocos2d::CCTouch* touch, cocos2d::CCEvent* event) override {
-        if (shouldRetryOnAnyClick()) {
-            this->onReplay(nullptr);
-            return true;
-        }
-
         return RetryLevelLayer::ccTouchBegan(touch, event);
+    }
+
+    void ccTouchEnded(cocos2d::CCTouch* touch, cocos2d::CCEvent* event) override {
+        RetryLevelLayer::ccTouchEnded(touch, event);
     }
 };
 
@@ -309,5 +450,196 @@ public:
             key = cocos2d::enumKeyCodes::KEY_Space;
         }
         PauseLayer::keyDown(key);
+    }
+};
+
+class ClickAnywhereCompleteScreenProxy : public cocos2d::CCLayer {
+public:
+    EndLevelLayer* m_owner = nullptr;
+
+    static ClickAnywhereCompleteScreenProxy* create(EndLevelLayer* owner) {
+        auto ret = new ClickAnywhereCompleteScreenProxy();
+        if (ret && ret->init(owner)) {
+            ret->autorelease();
+            return ret;
+        }
+        delete ret;
+        return nullptr;
+    }
+
+    bool init(EndLevelLayer* owner) {
+        if (!CCLayer::init()) return false;
+        m_owner = owner;
+        this->setTouchEnabled(true);
+        return true;
+    }
+
+    void registerWithTouchDispatcher() override {
+        if (auto director = cocos2d::CCDirector::sharedDirector()) {
+            if (auto dispatcher = director->getTouchDispatcher()) {
+                dispatcher->addTargetedDelegate(this, -2000, true);
+            }
+        }
+    }
+
+    bool isTouchOverButton(cocos2d::CCTouch* touch) {
+        if (!m_owner) return false;
+        
+        auto menu = m_owner->m_sideMenu;
+        if (!menu) return false;
+
+        auto touchPos = touch->getLocation();
+        
+        CCObject* obj = nullptr;
+        CCARRAY_FOREACH(menu->getChildren(), obj) {
+            auto node = static_cast<cocos2d::CCNode*>(obj);
+            if (!node || !node->isVisible()) continue;
+
+            auto box = node->boundingBox();
+            auto menuPos = menu->getPosition();
+            box.origin.x += menuPos.x;
+            box.origin.y += menuPos.y;
+
+            if (box.containsPoint(touchPos)) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+
+    bool ccTouchBegan(cocos2d::CCTouch* touch, cocos2d::CCEvent* event) override {
+        if (!m_owner || !shouldRetryOnAnyClick()) {
+            return false;
+        }
+
+        if (isTouchOverButton(touch)) {
+            return false;
+        }
+
+        if (isInstantRetryEnabled()) {
+            m_owner->onReplay(nullptr);
+        }
+
+        return true;
+    }
+
+    void ccTouchEnded(cocos2d::CCTouch* touch, cocos2d::CCEvent* event) override {
+        if (m_owner && shouldRetryOnAnyClick() && !isInstantRetryEnabled() && !isTouchOverButton(touch)) {
+            m_owner->onReplay(nullptr);
+        }
+    }
+};
+
+class InstantRetryCompleteButtonProxy : public cocos2d::CCLayer {
+public:
+    EndLevelLayer* m_owner = nullptr;
+
+    static InstantRetryCompleteButtonProxy* create(EndLevelLayer* owner) {
+        auto ret = new InstantRetryCompleteButtonProxy();
+        if (ret && ret->init(owner)) {
+            ret->autorelease();
+            return ret;
+        }
+        delete ret;
+        return nullptr;
+    }
+
+    bool init(EndLevelLayer* owner) {
+        if (!CCLayer::init()) return false;
+        m_owner = owner;
+        this->setTouchEnabled(true);
+        return true;
+    }
+
+    void registerWithTouchDispatcher() override {
+        if (auto director = cocos2d::CCDirector::sharedDirector()) {
+            if (auto dispatcher = director->getTouchDispatcher()) {
+                dispatcher->addTargetedDelegate(this, -2000, true);
+            }
+        }
+    }
+
+    bool isTouchOverRetryButton(cocos2d::CCTouch* touch) {
+        if (!m_owner || !m_owner->m_sideMenu) return false;
+
+        auto touchPos = touch->getLocation();
+        auto menu = m_owner->m_sideMenu;
+
+        cocos2d::CCRect retryBtnBox;
+        bool found = false;
+
+        float minCenterX = FLT_MAX;
+        CCObject* obj = nullptr;
+        CCARRAY_FOREACH(menu->getChildren(), obj) {
+            auto node = static_cast<cocos2d::CCNode*>(obj);
+            if (!node || !node->isVisible()) continue;
+
+            auto box = node->boundingBox();
+            auto menuPos = menu->getPosition();
+            box.origin.x += menuPos.x;
+            box.origin.y += menuPos.y;
+
+            float centerX = box.getMidX();
+            if (centerX < minCenterX) {
+                minCenterX = centerX;
+                retryBtnBox = box;
+                found = true;
+            }
+        }
+
+        if (found && retryBtnBox.containsPoint(touchPos)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    bool ccTouchBegan(cocos2d::CCTouch* touch, cocos2d::CCEvent* event) override {
+        if (!m_owner || !isInstantRetryEnabled()) {
+            return false;
+        }
+
+        if (isTouchOverRetryButton(touch)) {
+            m_owner->onReplay(nullptr);
+            return true;
+        }
+
+        return false;
+    }
+};
+
+class $modify(NoAutoRetryPlusEndLevelLayer, EndLevelLayer) {
+public:
+    void customSetup() override {
+        EndLevelLayer::customSetup();
+
+        bool clickAnywhereOn = shouldRetryOnAnyClick();
+        bool instantRetryOn = isInstantRetryEnabled();
+        
+        if (clickAnywhereOn) {
+            if (auto proxy = ClickAnywhereCompleteScreenProxy::create(this)) {
+                this->addChild(proxy, 9999);
+            }
+        } else if (instantRetryOn) {
+            if (auto proxy = InstantRetryCompleteButtonProxy::create(this)) {
+                this->addChild(proxy, 9999);
+            }
+        }
+    }
+
+    void keyDown(cocos2d::enumKeyCodes key) override {
+        if (shouldMapUpArrow(key)) {
+            key = cocos2d::enumKeyCodes::KEY_Space;
+        }
+        EndLevelLayer::keyDown(key);
+    }
+
+    bool ccTouchBegan(cocos2d::CCTouch* touch, cocos2d::CCEvent* event) override {
+        return EndLevelLayer::ccTouchBegan(touch, event);
+    }
+
+    void ccTouchEnded(cocos2d::CCTouch* touch, cocos2d::CCEvent* event) override {
+        EndLevelLayer::ccTouchEnded(touch, event);
     }
 };

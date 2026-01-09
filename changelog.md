@@ -1,4 +1,10 @@
-# Changelog
+## v1.1.0 - 1/7/26
+
+* New feature: Instant retry. makes it so clicking retry activates on mouse down rather than mouse up. useful for levels like low death that make you click on frame one.
+* Fixed an issue with the "Click anywhere to retry" option that made it so hitting the menu button wouldn't do anything (you can now safely use it on mobile as well.)
+* Up arrow retry now functions with the level complete screen
+* Updated the mod icon
+* Removed Herobrine
 
 ## v1.0.4 - 12/29/25
 
