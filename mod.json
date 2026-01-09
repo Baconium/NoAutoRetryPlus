@@ -8,7 +8,7 @@
     },
     "id": "baconmania.noautoretryplus",
     "name": "No Auto Retry+",
-    "version": "v1.0.4",
+    "version": "v1.1.0",
     "developer": "BaconMania",
     "description": "Bugfixes and enhancements for disabling the 'Auto Retry' option",
     "repository": "https://github.com/Baconium/NoAutoRetryPlus",
