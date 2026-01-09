@@ -62,3 +62,8 @@ build-*/
 # CLion
 .idea/
 /cmake-build-*/
+
+# symlink
+*.lnk
+logs/
+logs
